@@ -131,7 +131,7 @@ double pidOutput;
 char  *currentActivity = COASTING_STRING;
 
 //Specify the links and initial tuning parameters
-PID warmingPID(&currentTemp, &pidOutput, &targetTemp, 2,5,1, DIRECT);
+PID warmingPID(&currentTemp, &pidOutput, &targetTemp, 200,50,1, DIRECT);
 
 int WindowSize = INITIAL_PID_WINDOW_SIZE;
 unsigned long windowStartTime;
@@ -423,6 +423,12 @@ void loop()
    * turn the output pin on/off based on pid output
    ************************************************/
   time = millis();
+  
+  // This checks for rollover with millis()
+  if (time < windowStartTime) {
+    windowStartTime = 0;
+  }
+  
   if ((time - windowStartTime) > WindowSize)
   { //time to shift the Relay Window
     windowStartTime += WindowSize;
@@ -449,4 +455,5 @@ void loop()
   Serial.print("#time = ");Serial.println(time);
   Serial.print("#windowStartTime = ");Serial.println(windowStartTime);
   Serial.print("#pidOutput = ");Serial.println(pidOutput);
+  delay(500);
 }
