@@ -39,22 +39,24 @@
 #include <SD.h>
 #endif
 
-#if USE_ETHERNET
-#include <SPI.h>
-#include <Ethernet.h>
-#endif
+// In order to prevent the IDE from including these, you have to comment them out, not just ifdef them
+//#if USE_ETHERNET
+//#include <SPI.h>
+//#include <Ethernet.h>
+//#endif
 
 #define numberof(x) (sizeof((x))/sizeof 0[(x)])
 
 #define TEMPERATURE_POT_PIN A0
-#define MAX_SET_TEMPERATURE 125.0
+#define MIN_SET_TEMPERATURE 60
+#define MAX_SET_TEMPERATURE 120
 
 #define HARDWARE_SS_PIN 10
 #define SHIELD_SS_PIN   4
-#define LOG_FILE_NAME   "warmerator.csv"
+#define LOG_FILE_NAME   "w.csv"
 
 #define INITIAL_PID_WINDOW_SIZE    5000
-#define INITIAL_TARGET_TEMPERATURE 22.222222
+#define INITIAL_TARGET_TEMPERATURE 72
 #define CRITICALLY_HOT_OFFSET      10
 #define CRITICALLY_COOL_OFFSET     INITIAL_TARGET_TEMPERATURE
 
@@ -74,9 +76,9 @@
 #define LCD_SET_TEMP_LINE     0
 #define LCD_CURRENT_TEMP_LINE 1
 #define LCD_STATUS_LINE       3
-#define HEATING_STRING        "Heating"
-#define COOLING_STRING        "Cooling"
-#define COASTING_STRING       "Coasting"
+#define HEATING_STRING        "Heat"
+#define COOLING_STRING        "Cool"
+#define COASTING_STRING       "Coast"
 
 
 #if USE_INTERNET
@@ -121,17 +123,16 @@ LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin, D4_pin,D5_pin,D6_pin,D7_pin
 
 DeviceAddress thermometer = { 0x28, 0x24, 0xF0, 0xB4, 0x05, 0x00, 0x00, 0x78 };
 
-char heatRelayPin[1] = {5};
-char coolRelayPin[1] = {-1};
+char heatRelayPin = 5;
 
 // Define Temperature control variables
-double currentTemp     = INITIAL_TARGET_TEMPERATURE;
-double targetTemp      = INITIAL_TARGET_TEMPERATURE;
-double pidOutput;
-char  *currentActivity = COASTING_STRING;
+double  currentTemp     = INITIAL_TARGET_TEMPERATURE;
+double  targetTemp      = INITIAL_TARGET_TEMPERATURE;
+double  pidOutput;
+char   *currentActivity = COASTING_STRING;
 
 //Specify the links and initial tuning parameters
-PID warmingPID(&currentTemp, &pidOutput, &targetTemp, 200,50,1, DIRECT);
+PID warmingPID(&currentTemp, &pidOutput, &targetTemp, 35,30,5, DIRECT);
 
 int WindowSize = INITIAL_PID_WINDOW_SIZE;
 unsigned long windowStartTime;
@@ -216,18 +217,18 @@ int getLength(int someValue) {
 }
 #endif
 
-static void reportTemperature(unsigned long time, double target, double current, char *activity)
+static void reportTemperature(unsigned long time, long target, long current, char *activity)
 {
   String logData = "";
-  static double previousTarget = -255;
-  static double previousTemp   = -255;
+  static long previousTarget = -255;
+  static long previousTemp   = -255;
   
   logData = String(time) + "," + activity + "," + String(target) + "," + String(current);
   
 #if USE_LCD
   lcd.clear();
 #endif
-  if (-127.00 == current)
+  if (0 > current)
   {
     if ((previousTemp != current) || (previousTarget != target))
     {
@@ -241,16 +242,16 @@ static void reportTemperature(unsigned long time, double target, double current,
   else
   {
 //    if ((previousTemp != current) || (previousTarget != target))
-    {
-      Serial.println(logData);
-    }
+//    {
+//      Serial.println(logData);
+//    }
  #if USE_LCD
     lcd.setCursor(0,LCD_SET_TEMP_LINE);
     lcd.print("Set:     ");
-    lcd.print(DallasTemperature::toFahrenheit(target)); 
+    lcd.print(target);
     lcd.setCursor(0,LCD_CURRENT_TEMP_LINE);
     lcd.print("Current: ");
-    lcd.print(DallasTemperature::toFahrenheit(current));
+    lcd.print(current);
     lcd.setCursor(0,LCD_STATUS_LINE);
     lcd.print(activity);
 #endif  
@@ -267,51 +268,23 @@ static void reportTemperature(unsigned long time, double target, double current,
 #endif
 }
 
-static void setTemperatureRelays(unsigned char HEAT, unsigned char COOL)
+static void setTemperatureRelay(unsigned char HEAT)
 {
-  unsigned int i;
-#if 1
-  /* Set the heat relay pins to output low */
-  for(i = 0; i < numberof(heatRelayPin); ++i)
-  {
-    if (0 <= heatRelayPin[i])
-    { 
 /*
-      Serial.print("#Setting Heat pin ");
-      Serial.print(heatRelayPin[i]);
-      Serial.print(" to ");
-      Serial.println(HEAT);
+  Serial.print("#Setting Heat pin ");
+  Serial.print(heatRelayPin);
+  Serial.print(" to ");
+  Serial.println(HEAT);
 */
-      pinMode(heatRelayPin[i],OUTPUT);
-      digitalWrite(heatRelayPin[i],HEAT);
-    }
-  }
-#endif
-#if 0    
-  /* Set the chill relay pins to output low */
-  for(i = 0; i < numberof(coolRelayPin); ++i)
-  {
-    if (0 <= coolRelayPin[i])
-    { 
-/* 
-      Serial.print("#Setting Cool pin ");
-      Serial.print(coolRelayPin[i]);
-      Serial.print(" to ");
-      Serial.println(COOL);
-*/
-      pinMode(coolRelayPin[i],OUTPUT);
-      digitalWrite(coolRelayPin[i],COOL);
-    }
-  }
-#endif
+  pinMode(heatRelayPin,OUTPUT);
+  digitalWrite(heatRelayPin,HEAT);
 }
 
 static void getTargetTemperature(double *target)
 {
-  double potValue = 181.8666; /* set default value to 72 degrees F */  
-  potValue = analogRead(TEMPERATURE_POT_PIN);
-    
-  *target = MAX_SET_TEMPERATURE * (potValue /1023.0); 
+  int potValue = analogRead(TEMPERATURE_POT_PIN);
+  *target = MIN_SET_TEMPERATURE 
+            + ((MAX_SET_TEMPERATURE-MIN_SET_TEMPERATURE) * (potValue /1023.0)); 
 }
 
 void setup()
@@ -329,7 +302,7 @@ void setup()
   currentTemp = targetTemp;
   
   /* turn off the relays until we are sure of what we should be doing */
-  setTemperatureRelays(LOW,LOW); 
+  setTemperatureRelay(LOW); 
   
   // Start up the temperature sensor library
   temperatureSensors.begin();
@@ -391,20 +364,14 @@ void setup()
 
 void coast()
 {
-  setTemperatureRelays(LOW,LOW);
+  setTemperatureRelay(LOW);
   currentActivity = COASTING_STRING;
 }
 
 void heat()
 {
-  setTemperatureRelays(HIGH,LOW);
+  setTemperatureRelay(HIGH);
   currentActivity = HEATING_STRING;
-}
-
-void chill()
-{
-  setTemperatureRelays(LOW,HIGH);
-  currentActivity = COOLING_STRING;  
 }
 
 void loop()
@@ -413,7 +380,7 @@ void loop()
 
   getTargetTemperature(&targetTemp);
   temperatureSensors.requestTemperatures();
-  currentTemp = temperatureSensors.getTempC(thermometer);
+  currentTemp = temperatureSensors.getTempF(thermometer);
   time = millis();
   reportTemperature(time, targetTemp, currentTemp, currentActivity);
   
@@ -442,16 +409,6 @@ void loop()
   {
     coast();
   }
-/*  
-  if (currentTemp >= (targetTemp+CRITICALLY_HOT_OFFSET))
-  {
-    chill(); 
-  }
-  else if (currentTemp <= (targetTemp-CRITICALLY_COOL_OFFSET))
-  {
-    heat();
-  }
-*/
   Serial.print("#time = ");Serial.println(time);
   Serial.print("#windowStartTime = ");Serial.println(windowStartTime);
   Serial.print("#pidOutput = ");Serial.println(pidOutput);
