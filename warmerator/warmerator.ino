@@ -40,10 +40,10 @@
 #endif
 
 // In order to prevent the IDE from including these, you have to comment them out, not just ifdef them
-//#if USE_ETHERNET
-//#include <SPI.h>
-//#include <Ethernet.h>
-//#endif
+#if USE_ETHERNET
+#include <SPI.h>
+#include <Ethernet.h>
+#endif
 
 #define numberof(x) (sizeof((x))/sizeof 0[(x)])
 
@@ -56,6 +56,12 @@
 #define LOG_FILE_NAME   "w.csv"
 
 #define INITIAL_PID_WINDOW_SIZE    5000
+#define AGGRESSIVE_PID_KP 20
+#define AGGRESSIVE_PID_KI 60
+#define AGGRESSIVE_PID_KD 5
+#define CONSERVATIVE_PID_KP 1.0
+#define CONSERVATIVE_PID_KI 0.05
+#define CONSERVATIVE_PID_KD .25
 #define INITIAL_TARGET_TEMPERATURE 72
 #define CRITICALLY_HOT_OFFSET      10
 #define CRITICALLY_COOL_OFFSET     INITIAL_TARGET_TEMPERATURE
@@ -132,7 +138,8 @@ double  pidOutput;
 char   *currentActivity = COASTING_STRING;
 
 //Specify the links and initial tuning parameters
-PID warmingPID(&currentTemp, &pidOutput, &targetTemp, 35,30,5, DIRECT);
+PID warmingPID(&currentTemp, &pidOutput, &targetTemp, 
+               CONSERVATIVE_PID_KP, CONSERVATIVE_PID_KI, CONSERVATIVE_PID_KD, DIRECT);
 
 int WindowSize = INITIAL_PID_WINDOW_SIZE;
 unsigned long windowStartTime;
@@ -217,7 +224,7 @@ int getLength(int someValue) {
 }
 #endif
 
-static void reportTemperature(unsigned long time, long target, long current, char *activity)
+static void reportTemperature(unsigned long time, double target, double current, char *activity)
 {
   String logData = "";
   static long previousTarget = -255;
@@ -230,7 +237,7 @@ static void reportTemperature(unsigned long time, long target, long current, cha
 #endif
   if (0 > current)
   {
-    if ((previousTemp != current) || (previousTarget != target))
+//    if ((previousTemp != current) || (previousTarget != target))
     {
       Serial.println("#Error getting temperature");
     }
@@ -242,9 +249,9 @@ static void reportTemperature(unsigned long time, long target, long current, cha
   else
   {
 //    if ((previousTemp != current) || (previousTarget != target))
-//    {
-//      Serial.println(logData);
-//    }
+    {
+      Serial.println(logData);
+    }
  #if USE_LCD
     lcd.setCursor(0,LCD_SET_TEMP_LINE);
     lcd.print("Set:     ");
@@ -282,9 +289,10 @@ static void setTemperatureRelay(unsigned char HEAT)
 
 static void getTargetTemperature(double *target)
 {
-  int potValue = analogRead(TEMPERATURE_POT_PIN);
+  double potValue = analogRead(TEMPERATURE_POT_PIN);
+  double offset   = (potValue /1023.0) * (MAX_SET_TEMPERATURE-MIN_SET_TEMPERATURE);
   *target = MIN_SET_TEMPERATURE 
-            + ((MAX_SET_TEMPERATURE-MIN_SET_TEMPERATURE) * (potValue /1023.0)); 
+            + (round(offset * 2.0)/2.0); 
 }
 
 void setup()
@@ -376,6 +384,7 @@ void heat()
 
 void loop()
 {
+  double gap;
   unsigned long time;
 
   getTargetTemperature(&targetTemp);
@@ -383,6 +392,17 @@ void loop()
   currentTemp = temperatureSensors.getTempF(thermometer);
   time = millis();
   reportTemperature(time, targetTemp, currentTemp, currentActivity);
+  
+  gap = abs(targetTemp-currentTemp); //distance away from setpoint
+  if(gap<3)
+  {  //we're close to setpoint, use conservative tuning parameters
+    warmingPID.SetTunings(CONSERVATIVE_PID_KP, CONSERVATIVE_PID_KI, CONSERVATIVE_PID_KD);
+  }
+  else
+  {
+     //we're far from setpoint, use aggressive tuning parameters
+     warmingPID.SetTunings(AGGRESSIVE_PID_KP, AGGRESSIVE_PID_KI, AGGRESSIVE_PID_KD);
+  }
   
   warmingPID.Compute();
 
