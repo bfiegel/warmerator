@@ -55,13 +55,18 @@
 #define SHIELD_SS_PIN   4
 #define LOG_FILE_NAME   "w.csv"
 
+#define SERIAL_PRINT_PERIOD 500
+
 #define INITIAL_PID_WINDOW_SIZE    5000
-#define AGGRESSIVE_PID_KP 20
-#define AGGRESSIVE_PID_KI 60
-#define AGGRESSIVE_PID_KD 5
-#define CONSERVATIVE_PID_KP 1.0
-#define CONSERVATIVE_PID_KI 0.05
-#define CONSERVATIVE_PID_KD .25
+//#define AGGRESSIVE_PID_KP 10
+//#define AGGRESSIVE_PID_KI 3
+//#define AGGRESSIVE_PID_KD 5
+//#define AGGRESSIVE_PID_KP 2.0
+//#define AGGRESSIVE_PID_KI 0.05
+//#define AGGRESSIVE_PID_KD .25
+#define CONSERVATIVE_PID_KP 50
+#define CONSERVATIVE_PID_KI 50
+#define CONSERVATIVE_PID_KD 0
 #define INITIAL_TARGET_TEMPERATURE 72
 #define CRITICALLY_HOT_OFFSET      10
 #define CRITICALLY_COOL_OFFSET     INITIAL_TARGET_TEMPERATURE
@@ -136,6 +141,7 @@ double  currentTemp     = INITIAL_TARGET_TEMPERATURE;
 double  targetTemp      = INITIAL_TARGET_TEMPERATURE;
 double  pidOutput;
 char   *currentActivity = COASTING_STRING;
+char   *previousActivity = COASTING_STRING;
 
 //Specify the links and initial tuning parameters
 PID warmingPID(&currentTemp, &pidOutput, &targetTemp, 
@@ -143,6 +149,7 @@ PID warmingPID(&currentTemp, &pidOutput, &targetTemp,
 
 int WindowSize = INITIAL_PID_WINDOW_SIZE;
 unsigned long windowStartTime;
+unsigned long serialTime;
 
 /******************************************************************/
 #if USE_SD_CARD
@@ -325,6 +332,7 @@ void setup()
   lcd.setBacklight(HIGH);
 #endif
 
+  serialTime = 0;
   /* Iniitalize the PID algorhythm variables */
   windowStartTime = millis();
   //tell the PID to range between 0 and the full window size
@@ -373,12 +381,14 @@ void setup()
 void coast()
 {
   setTemperatureRelay(LOW);
+  previousActivity=currentActivity;
   currentActivity = COASTING_STRING;
 }
 
 void heat()
 {
   setTemperatureRelay(HIGH);
+  previousActivity=currentActivity;
   currentActivity = HEATING_STRING;
 }
 
@@ -389,10 +399,10 @@ void loop()
 
   getTargetTemperature(&targetTemp);
   temperatureSensors.requestTemperatures();
-  currentTemp = temperatureSensors.getTempF(thermometer);
-  time = millis();
-  reportTemperature(time, targetTemp, currentTemp, currentActivity);
-  
+  currentTemp = temperatureSensors.getTempF(thermometer); 
+  warmingPID.Compute();
+
+/*  
   gap = abs(targetTemp-currentTemp); //distance away from setpoint
   if(gap<3)
   {  //we're close to setpoint, use conservative tuning parameters
@@ -403,14 +413,8 @@ void loop()
      //we're far from setpoint, use aggressive tuning parameters
      warmingPID.SetTunings(AGGRESSIVE_PID_KP, AGGRESSIVE_PID_KI, AGGRESSIVE_PID_KD);
   }
-  
-  warmingPID.Compute();
-
-  /************************************************
-   * turn the output pin on/off based on pid output
-   ************************************************/
-  time = millis();
-  
+*/
+  time = millis(); 
   // This checks for rollover with millis()
   if (time < windowStartTime) {
     windowStartTime = 0;
@@ -418,9 +422,12 @@ void loop()
   
   if ((time - windowStartTime) > WindowSize)
   { //time to shift the Relay Window
-    windowStartTime += WindowSize;
+    windowStartTime = time;
   }
-  
+
+  /************************************************
+   * turn the output pin on/off based on pid output
+   ************************************************/    
   if(pidOutput > (time - windowStartTime))
   {
     heat();
@@ -429,8 +436,22 @@ void loop()
   {
     coast();
   }
-  Serial.print("#time = ");Serial.println(time);
-  Serial.print("#windowStartTime = ");Serial.println(windowStartTime);
-  Serial.print("#pidOutput = ");Serial.println(pidOutput);
-  delay(500);
+  
+    // This checks for rollover with millis()
+  if (time < serialTime) {
+    serialTime = 0;
+  }
+  
+  if ((time > serialTime) || (currentActivity != previousActivity))
+  { //time to shift the Relay Window
+    serialTime = time + SERIAL_PRINT_PERIOD;
+    Serial.print("#time=");Serial.print(time);
+    Serial.print(" windowStartTime=");Serial.print(windowStartTime);
+    Serial.print(" pidOutput=");Serial.print(pidOutput);
+    Serial.print(" Kp=");Serial.print(CONSERVATIVE_PID_KP);
+    Serial.print(" Ki=");Serial.print(CONSERVATIVE_PID_KI);
+    Serial.print(" Kd=");Serial.println(CONSERVATIVE_PID_KD);
+    reportTemperature(time, targetTemp, currentTemp, currentActivity);
+  }
+//  delay(500);
 }
