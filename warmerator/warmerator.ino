@@ -58,14 +58,11 @@
 #define SERIAL_PRINT_PERIOD 500
 
 #define INITIAL_PID_WINDOW_SIZE    5000
-//#define AGGRESSIVE_PID_KP 10
-//#define AGGRESSIVE_PID_KI 3
-//#define AGGRESSIVE_PID_KD 5
-//#define AGGRESSIVE_PID_KP 2.0
-//#define AGGRESSIVE_PID_KI 0.05
-//#define AGGRESSIVE_PID_KD .25
-#define CONSERVATIVE_PID_KP 50
-#define CONSERVATIVE_PID_KI 50
+#define AGGRESSIVE_PID_KP INITIAL_PID_WINDOW_SIZE/5
+#define AGGRESSIVE_PID_KI 4
+#define AGGRESSIVE_PID_KD 0
+#define CONSERVATIVE_PID_KP INITIAL_PID_WINDOW_SIZE/5
+#define CONSERVATIVE_PID_KI 4
 #define CONSERVATIVE_PID_KD 0
 #define INITIAL_TARGET_TEMPERATURE 72
 #define CRITICALLY_HOT_OFFSET      10
@@ -73,6 +70,7 @@
 
 // Data wire is plugged into pin 13 on the Arduino
 #define ONE_WIRE_BUS_PIN 13
+#define THERMOMETER_SAMPLE_TIME 5000
 
 #define I2C_ADDR 0x27
 #define BACKLIGHT_PIN 3
@@ -132,7 +130,11 @@ LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin, D4_pin,D5_pin,D6_pin,D7_pin
 // See the tutorial on how to obtain these addresses:
 // http://www.hacktronics.com/Tutorials/arduino-1-wire-address-finder.html
 
-DeviceAddress thermometer = { 0x28, 0x24, 0xF0, 0xB4, 0x05, 0x00, 0x00, 0x78 };
+//DeviceAddress thermometer = { 0x28, 0x24, 0xF0, 0xB4, 0x05, 0x00, 0x00, 0x78 };
+//DeviceAddress thermometer = { 0x28, 0x24, 0xF0, 0xB4, 0x05, 0x00, 0x00, 0x78 };
+//DeviceAddress thermometer = { 0x28, 0x24, 0xF0, 0xB4, 0x05, 0x00, 0x00, 0x78 };
+//DeviceAddress thermometer = { 0x28, 0x24, 0xF0, 0xB4, 0x05, 0x00, 0x00, 0x78 };
+DeviceAddress thermometer = { 0x28, 0xF0, 0xFD, 0xB4, 0x05, 0x00, 0x00, 0x8C };
 
 char heatRelayPin = 5;
 
@@ -323,7 +325,7 @@ void setup()
   temperatureSensors.begin();
   
   // set the resolution to 10 bit
-  temperatureSensors.setResolution(thermometer, 10);
+  temperatureSensors.setResolution(thermometer, 12);
 
 #if USE_LCD
   /* Start the Liquid Crystal Display library */
@@ -339,6 +341,8 @@ void setup()
   warmingPID.SetOutputLimits(0, WindowSize);
   //turn the PID on
   warmingPID.SetMode(AUTOMATIC);
+  //the probe is very slow to respond to change, let the PID know
+  warmingPID.SetSampleTime(THERMOMETER_SAMPLE_TIME);
   
 #if USE_SD_CARD
   // Set the SD Card libraray Chip Select pin for the SD card to OUTPUT
@@ -400,11 +404,9 @@ void loop()
   getTargetTemperature(&targetTemp);
   temperatureSensors.requestTemperatures();
   currentTemp = temperatureSensors.getTempF(thermometer); 
-  warmingPID.Compute();
 
-/*  
   gap = abs(targetTemp-currentTemp); //distance away from setpoint
-  if(gap<3)
+  if(gap<1)
   {  //we're close to setpoint, use conservative tuning parameters
     warmingPID.SetTunings(CONSERVATIVE_PID_KP, CONSERVATIVE_PID_KI, CONSERVATIVE_PID_KD);
   }
@@ -413,7 +415,9 @@ void loop()
      //we're far from setpoint, use aggressive tuning parameters
      warmingPID.SetTunings(AGGRESSIVE_PID_KP, AGGRESSIVE_PID_KI, AGGRESSIVE_PID_KD);
   }
-*/
+  
+  warmingPID.Compute();
+  
   time = millis(); 
   // This checks for rollover with millis()
   if (time < windowStartTime) {
@@ -448,9 +452,9 @@ void loop()
     Serial.print("#time=");Serial.print(time);
     Serial.print(" windowStartTime=");Serial.print(windowStartTime);
     Serial.print(" pidOutput=");Serial.print(pidOutput);
-    Serial.print(" Kp=");Serial.print(CONSERVATIVE_PID_KP);
-    Serial.print(" Ki=");Serial.print(CONSERVATIVE_PID_KI);
-    Serial.print(" Kd=");Serial.println(CONSERVATIVE_PID_KD);
+    Serial.print(" Kp=");Serial.print(warmingPID.GetKp());
+    Serial.print(" Ki=");Serial.print(warmingPID.GetKi());
+    Serial.print(" Kd=");Serial.println(warmingPID.GetKd());
     reportTemperature(time, targetTemp, currentTemp, currentActivity);
   }
 //  delay(500);
