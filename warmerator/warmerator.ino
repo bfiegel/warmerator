@@ -23,6 +23,7 @@
 # define USE_WIFI       0
 #endif
 
+#include <avr/wdt.h>
 #include <PID_v1.h>
 
 #include <OneWire.h>
@@ -293,7 +294,7 @@ static void setTemperatureRelay(unsigned char HEAT)
   Serial.println(HEAT);
 */
   pinMode(heatRelayPin,OUTPUT);
-  digitalWrite(heatRelayPin,HEAT);
+  digitalWrite(heatRelayPin,!HEAT);
 }
 
 static void getTargetTemperature(double *target)
@@ -380,6 +381,7 @@ void setup()
     Serial.println("#error getting address");
   }
 #endif
+  wdt_enable (WDTO_8S);  // reset after one second, if no "pat the dog" received
 }
 
 void coast()
@@ -401,6 +403,7 @@ void loop()
   double gap;
   unsigned long time;
 
+  wdt_reset ();
   getTargetTemperature(&targetTemp);
   temperatureSensors.requestTemperatures();
   currentTemp = temperatureSensors.getTempF(thermometer); 
