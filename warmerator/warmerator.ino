@@ -86,6 +86,7 @@
 
 #define LCD_SET_TEMP_LINE     0
 #define LCD_CURRENT_TEMP_LINE 1
+#define LCD_UPTIME_LINE       2
 #define LCD_STATUS_LINE       3
 #define HEATING_STRING        "Heat"
 #define COOLING_STRING        "Cool"
@@ -282,6 +283,9 @@ static void reportTemperature(unsigned long time, double target, double current,
     lcd.setCursor(0,LCD_CURRENT_TEMP_LINE);
     lcd.print("Current: ");
     lcd.print(current);
+    lcd.setCursor(0,LCD_UPTIME_LINE);
+    lcd.print("Uptime:  ");
+    lcd.print(millis());
     lcd.setCursor(0,LCD_STATUS_LINE);
     lcd.print(activity);
 #endif  
