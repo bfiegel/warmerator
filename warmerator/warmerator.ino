@@ -73,6 +73,7 @@
 #define ONE_WIRE_BUS_PIN 13
 #define THERMOMETER_SAMPLE_TIME 5000
 
+#define LCD_RESET_PERIOD 30000
 #define I2C_ADDR 0x27
 #define BACKLIGHT_PIN 3
 #define En_pin 2
@@ -125,6 +126,7 @@ DallasTemperature temperatureSensors(&oneWire);
 #if USE_LCD
 // UI LCD
 LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin, D4_pin,D5_pin,D6_pin,D7_pin);
+unsigned long lcdResetTime;
 #endif
 
 // Assign the addresses of your 1-Wire temp sensors.
@@ -234,6 +236,17 @@ int getLength(int someValue) {
 }
 #endif
 
+static void resetLcd()
+{
+#if USE_LCD
+  /* Start the Liquid Crystal Display library */
+  lcd.begin (20,4,LCD_5x8DOTS);
+  lcd.setBacklightPin(BACKLIGHT_PIN, POSITIVE);
+  lcd.setBacklight(HIGH);
+  lcdResetTime = millis();
+#endif
+}
+
 static void reportTemperature(unsigned long time, double target, double current, char *activity)
 {
   String logData = "";
@@ -329,10 +342,7 @@ void setup()
   temperatureSensors.setResolution(thermometer, 12);
 
 #if USE_LCD
-  /* Start the Liquid Crystal Display library */
-  lcd.begin (20,4,LCD_5x8DOTS);
-  lcd.setBacklightPin(BACKLIGHT_PIN, POSITIVE);
-  lcd.setBacklight(HIGH);
+  resetLcd();
 #endif
 
   serialTime = 0;
@@ -444,7 +454,17 @@ void loop()
     coast();
   }
   
-    // This checks for rollover with millis()
+  if (time < lcdResetTime)
+  {
+    lcdResetTime = 0; 
+  }
+
+  if (time > (lcdResetTime + (LCD_RESET_PERIOD*1000)))
+  {
+    resetLcd();
+  }
+  
+  // This checks for rollover with millis()
   if (time < serialTime) {
     serialTime = 0;
   }
