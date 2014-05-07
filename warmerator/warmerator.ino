@@ -73,7 +73,7 @@
 #define ONE_WIRE_BUS_PIN 13
 #define THERMOMETER_SAMPLE_TIME 5000
 
-#define LCD_RESET_PERIOD 30000
+#define LCD_RESET_PERIOD 60000
 #define I2C_ADDR 0x27
 #define BACKLIGHT_PIN 3
 #define En_pin 2
@@ -463,7 +463,7 @@ void loop()
     lcdResetTime = 0; 
   }
 
-  if (time > (lcdResetTime + (LCD_RESET_PERIOD*1000)))
+  if (time > (lcdResetTime + LCD_RESET_PERIOD))
   {
     resetLcd();
   }
