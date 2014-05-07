@@ -250,10 +250,12 @@ static void resetLcd()
 
 static void reportTemperature(unsigned long time, double target, double current, char *activity)
 {
+  unsigned long seconds;
   String logData = "";
   static long previousTarget = -255;
   static long previousTemp   = -255;
   
+  seconds = time/1000;
   logData = String(time) + "," + activity + "," + String(target) + "," + String(current);
   
 #if USE_LCD
@@ -285,7 +287,11 @@ static void reportTemperature(unsigned long time, double target, double current,
     lcd.print(current);
     lcd.setCursor(0,LCD_UPTIME_LINE);
     lcd.print("Uptime:  ");
-    lcd.print(millis());
+    lcd.print(seconds/3600);
+    lcd.print(":");
+    lcd.print((seconds%3600)/60);
+    lcd.print(":");
+    lcd.print(seconds%60);    
     lcd.setCursor(0,LCD_STATUS_LINE);
     lcd.print(activity);
 #endif  
